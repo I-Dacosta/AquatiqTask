@@ -1,0 +1,21 @@
+# Generelt
+.env
+.env.local
+*.log
+.DS_Store
+node_modules/
+.n8n/
+pg_data/
+__pycache__/
+*.pyc
+
+# Next.js
+frontend/.next/
+frontend/out/
+frontend/node_modules/
+
+# Python
+ai/.venv/
+
+# Docker
+volumes/

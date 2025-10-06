@@ -1,0 +1,228 @@
+{
+  "name": "PrioritiAI - Simplified Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [{ "mode": "everyMinute" }]
+        },
+        "event": "messageReceived",
+        "options": {}
+      },
+      "id": "OutlookTrigger",
+      "name": "Outlook Email Trigger",
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "typeVersion": 1,
+      "position": [240, 200],
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "1",
+          "name": "M365 OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "event": "channelMessageReceived",
+        "options": {}
+      },
+      "id": "TeamsTrigger",
+      "name": "Teams Message Trigger",
+      "type": "n8n-nodes-base.microsoftTeamsTrigger",
+      "typeVersion": 1,
+      "position": [240, 400],
+      "credentials": {
+        "microsoftTeamsOAuth2Api": {
+          "id": "4",
+          "name": "Teams OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "prioai/tasks",
+        "responseMode": "onReceived",
+        "responseCode": 202,
+        "responseBinaryPropertyName": "data"
+      },
+      "id": "WebhookTrigger",
+      "name": "Webhook Create Task",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 600],
+      "webhookId": "prioai-create-task"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize data from all trigger types into standard format\nconst triggerName = Object.keys($input.all())[0];\nconst data = $input.all()[triggerName][0].json;\n\nlet normalized = {};\n\nswitch (triggerName) {\n  case 'Outlook Email Trigger':\n    normalized = {\n      title: data.subject || 'Untitled Email',\n      description: data.bodyPreview || data.body?.content || '',\n      category: 'SUPPORT',\n      requester_role: 'EMPLOYEE',\n      requester_name: data.from?.emailAddress?.name || 'Unknown',\n      source: 'outlook',\n      source_ref: data.id\n    };\n    break;\n    \n  case 'Teams Message Trigger':\n    normalized = {\n      title: `Teams: ${data.body?.content?.substring(0, 50) || 'Message'}...`,\n      description: data.body?.content || '',\n      category: 'SUPPORT',\n      requester_role: 'EMPLOYEE', \n      requester_name: data.from?.user?.displayName || 'Unknown',\n      source: 'teams',\n      source_ref: data.id,\n      channel: data.channelIdentity?.displayName\n    };\n    break;\n    \n  case 'Webhook Create Task':\n    normalized = {\n      title: data.title || 'Manual Task',\n      description: data.description || '',\n      category: data.category || 'SUPPORT',\n      requester_role: data.requester_role || 'EMPLOYEE',\n      requester_name: data.requester || 'API',\n      source: 'manual',\n      source_ref: data.id || null,\n      est_minutes: data.est_minutes,\n      due_text: data.due_text,\n      role_hint: data.role_hint\n    };\n    break;\n    \n  default:\n    normalized = {\n      title: 'Unknown Task',\n      description: 'Unknown source',\n      category: 'SUPPORT',\n      requester_role: 'EMPLOYEE',\n      requester_name: 'Unknown',\n      source: 'unknown'\n    };\n}\n\nreturn { json: normalized };"
+      },
+      "id": "NormalizeData",
+      "name": "Normalize Input Data", 
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ai-prioritization:8000/classify",
+        "authentication": "none",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"subject\": \"{{ $json.title }}\",\n  \"body\": \"{{ $json.description }}\",\n  \"sender\": \"{{ $json.requester_name }}\",\n  \"role_hint\": \"{{ $json.role_hint || '' }}\",\n  \"due_text\": \"{{ $json.due_text || '' }}\",\n  \"est_minutes\": {{ $json.est_minutes || 30 }}\n}",
+        "options": {}
+      },
+      "id": "AIPrioritization",
+      "name": "AI Priority Classification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [740, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO prioai_task (\n  title, description, source, source_ref, requester, role_hint, due_at,\n  est_minutes, value_score, risk_score, role_score, haste_score,\n  ai_score, ai_reason, status\n) VALUES (\n  '{{ $json.title.replace(/'/g, \"''\") }}',\n  '{{ $json.description.replace(/'/g, \"''\") }}',\n  '{{ $('Normalize Input Data').item.json.source }}',\n  '{{ $('Normalize Input Data').item.json.source_ref }}',\n  '{{ $('Normalize Input Data').item.json.requester_name }}',\n  '{{ $('Normalize Input Data').item.json.role_hint || '' }}',\n  {{ $json.due_at ? \"'\" + $json.due_at + \"'\" : 'NULL' }},\n  {{ $json.est_minutes || $('Normalize Input Data').item.json.est_minutes || 30 }},\n  {{ $json.value_score }},\n  {{ $json.risk_score }},\n  {{ $json.role_score }},\n  {{ $json.haste_score }},\n  {{ $json.ai_score }},\n  '{{ $json.ai_reason.replace(/'/g, \"''\") }}',\n  'incoming'\n)\nRETURNING id, title, ai_score, due_at, source;"
+      },
+      "id": "InsertTask",
+      "name": "Insert Task to Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [980, 400],
+      "credentials": {
+        "postgres": {
+          "id": "2",
+          "name": "PG PrioAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.TEAMS_WEBHOOK_URL }}",
+        "authentication": "none", 
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"type\": \"message\",\n  \"attachments\": [\n    {\n      \"contentType\": \"application/vnd.microsoft.card.adaptive\",\n      \"content\": {\n        \"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\",\n        \"type\": \"AdaptiveCard\",\n        \"version\": \"1.5\",\n        \"body\": [\n          { \"type\": \"TextBlock\", \"size\": \"Large\", \"weight\": \"Bolder\", \"text\": \"🎯 AI-klassifisert oppgave\" },\n          { \"type\": \"TextBlock\", \"text\": \"{{ $('AI Priority Classification').item.json.title }}\", \"wrap\": true },\n          { \"type\": \"FactSet\", \"facts\": [\n            { \"title\": \"AI Score:\", \"value\": \"{{ $('AI Priority Classification').item.json.ai_score }}\" },\n            { \"title\": \"Estimert tid:\", \"value\": \"{{ $('AI Priority Classification').item.json.est_minutes || 30 }} min\" },\n            { \"title\": \"Frist:\", \"value\": \"{{ $('AI Priority Classification').item.json.due_at || '-' }}\" },\n            { \"title\": \"Kilde:\", \"value\": \"{{ $('Normalize Input Data').item.json.source }}\" }\n          ]},\n          { \"type\": \"TextBlock\", \"text\": \"{{ $('AI Priority Classification').item.json.ai_reason }}\", \"wrap\": true, \"isSubtle\": true }\n        ],\n        \"actions\": [\n          { \"type\": \"Action.OpenUrl\", \"title\": \"Åpne i dashboard\", \"url\": \"http://localhost:3000/task/{{ $json.id }}\" }\n        ]\n      }\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "TeamsNotify",
+      "name": "Notify Teams Channel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1220, 300]
+    },
+    {
+      "parameters": {
+        "resource": "task",
+        "operation": "create",
+        "planId": "={{ $env.TEAMS_PLAN_ID }}",
+        "bucketId": "={{ $env.TEAMS_BUCKET_ID }}",
+        "title": "={{ $('AI Priority Classification').item.json.title }}",
+        "additionalFields": {
+          "notes": "={{ $('AI Priority Classification').item.json.description }}\\n\\n---\\nAI Priority Score: {{ $('AI Priority Classification').item.json.ai_score }}\\nKilde: {{ $('Normalize Input Data').item.json.source }}\\nPrioritiAI ID: {{ $json.id }}",
+          "dueDateTime": "={{ $('AI Priority Classification').item.json.due_at ? new Date($('AI Priority Classification').item.json.due_at).toISOString() : null }}",
+          "priority": "={{ $('AI Priority Classification').item.json.ai_score >= 80 ? 'urgent' : $('AI Priority Classification').item.json.ai_score >= 60 ? 'important' : $('AI Priority Classification').item.json.ai_score >= 40 ? 'medium' : 'low' }}"
+        }
+      },
+      "id": "CreatePlannerTask",
+      "name": "Create Planner Task",
+      "type": "n8n-nodes-base.microsoftTodoTask",
+      "typeVersion": 1,
+      "position": [1220, 500],
+      "credentials": {
+        "microsoftTodoOAuth2Api": {
+          "id": "5",
+          "name": "Microsoft Todo OAuth2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Outlook Email Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teams Message Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Create Task": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input Data", 
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Input Data": {
+      "main": [
+        [
+          {
+            "node": "AI Priority Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Priority Classification": {
+      "main": [
+        [
+          {
+            "node": "Insert Task to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Task to Database": {
+      "main": [
+        [
+          {
+            "node": "Notify Teams Channel",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create Planner Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "simplified-workflow",
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-10-05T12:00:00.000Z",
+  "versionId": "1"
+}

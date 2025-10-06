@@ -1,0 +1,64 @@
+{
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Hi, Ima! These are your tasks for today",
+    "editMode": "Edit Mode",
+    "exitEditMode": "Exit Edit Mode",
+    "stats": {
+      "totalTasks": "Total Tasks",
+      "completed": "Completed",
+      "pending": "Pending",
+      "progress": "Progress"
+    },
+    "inbox": {
+      "title": "Inbox",
+      "empty": "No new tasks",
+      "addTask": "Add Task"
+    },
+    "priority": {
+      "title": "Priority List",
+      "empty": "No prioritized tasks",
+      "setPriority": "Set as Priority"
+    },
+    "board": {
+      "title": "Board",
+      "todo": "To Do",
+      "inProgress": "In Progress",
+      "done": "Done"
+    }
+  },
+  "task": {
+    "title": "Title",
+    "description": "Description",
+    "priority": "Priority",
+    "status": "Status",
+    "dueDate": "Due Date",
+    "aiScore": "AI Score",
+    "aiExplanation": "AI Explanation",
+    "tags": "Tags",
+    "log": "Log",
+    "priorities": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "urgent": "Urgent"
+    },
+    "statuses": {
+      "inbox": "Inbox",
+      "priority": "Priority",
+      "todo": "To Do",
+      "in-progress": "In Progress",
+      "done": "Done"
+    }
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "close": "Close",
+    "confirm": "Confirm",
+    "loading": "Loading..."
+  }
+}

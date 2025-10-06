@@ -1,0 +1,53 @@
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: prioai
+      POSTGRES_PASSWORD: superSikker!
+      POSTGRES_DB: prioai_db
+    volumes:
+      - pg:/var/lib/postgresql/data
+      - ./infra/db/init.sql:/docker-entrypoint-initdb.d/00_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prioai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    ports:
+      - "5432:5432"
+
+  n8n:
+    image: n8nio/n8n:latest
+    environment:
+      N8N_HOST: localhost
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: prioai_db
+      DB_POSTGRESDB_USER: prioai
+      DB_POSTGRESDB_PASSWORD: superSikker!
+      GENERIC_TIMEZONE: "Europe/Oslo"
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n:/home/node/.n8n
+
+  ai-prioritization:
+    build: ./AIPrioritization
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      TZ: Europe/Oslo
+    ports:
+      - "8080:8000"
+
+volumes:
+  pg: {}
+  n8n: {}

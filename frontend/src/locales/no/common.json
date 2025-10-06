@@ -1,0 +1,64 @@
+{
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Hei, Ima! Dette er dine saker i dag",
+    "editMode": "Redigeringsmodus",
+    "exitEditMode": "Avslutt redigering",
+    "stats": {
+      "totalTasks": "Totalt oppgaver",
+      "completed": "Fullført",
+      "pending": "Gjenstår",
+      "progress": "Fremdrift"
+    },
+    "inbox": {
+      "title": "Innboks",
+      "empty": "Ingen nye oppgaver",
+      "addTask": "Legg til oppgave"
+    },
+    "priority": {
+      "title": "Prioritetsliste",
+      "empty": "Ingen prioriterte oppgaver",
+      "setPriority": "Sett som prioritet"
+    },
+    "board": {
+      "title": "Tavle",
+      "todo": "Å gjøre",
+      "inProgress": "Pågår",
+      "done": "Ferdig"
+    }
+  },
+  "task": {
+    "title": "Tittel",
+    "description": "Beskrivelse",
+    "priority": "Prioritet",
+    "status": "Status",
+    "dueDate": "Forfallsdato",
+    "aiScore": "AI-poeng",
+    "aiExplanation": "AI-forklaring",
+    "tags": "Etiketter",
+    "log": "Logg",
+    "priorities": {
+      "low": "Lav",
+      "medium": "Middels",
+      "high": "Høy",
+      "urgent": "Haster"
+    },
+    "statuses": {
+      "inbox": "Innboks",
+      "priority": "Prioritet",
+      "todo": "Å gjøre",
+      "in-progress": "Pågår",
+      "done": "Ferdig"
+    }
+  },
+  "common": {
+    "save": "Lagre",
+    "cancel": "Avbryt",
+    "delete": "Slett",
+    "edit": "Rediger",
+    "create": "Opprett",
+    "close": "Lukk",
+    "confirm": "Bekreft",
+    "loading": "Laster..."
+  }
+}

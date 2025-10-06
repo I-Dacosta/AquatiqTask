@@ -1,0 +1,164 @@
+{
+  "name": "PrioritiAI - Unified Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "event": "messageReceived",
+        "options": {}
+      },
+      "id": "OutlookTrigger",
+      "name": "Outlook Trigger",
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "1",
+          "name": "M365 OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "text": "=Analyze this email and determine if it contains a task or action item:\n\n**Subject:** {{ $json.subject }}\n**From:** {{ $json.from.emailAddress.address }}\n**Body:** {{ $json.bodyPreview || $json.body?.content }}\n\nExtract:\n1. Is this a task? (yes/no)\n2. Task title (clear, concise)\n3. Task description\n4. Estimated time in minutes\n5. Due date/time if mentioned\n6. Priority score (0-100) based on:\n   - Business value keywords (webshop, ordre, kunde, inntekt)\n   - Risk keywords (svindel, phishing, deadline)\n   - Role importance (CEO, CFO, leder)\n   - Urgency (i dag, nå, snarest)\n7. Reasoning for priority score",
+        "options": {
+          "systemMessage": "You are an AI assistant for PrioritiAI, a task prioritization system. Your role is to analyze emails and extract task information. Be thorough but concise. Always provide structured output that can be easily parsed. When assigning priority scores, consider: business value (30%), risk factors (25%), sender role (15%), and urgency (30%). Respond in Norwegian when appropriate."
+        },
+        "promptType": "define",
+        "hasOutputParser": true
+      },
+      "id": "AIAgent",
+      "name": "AI Agent Classifier",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "StructuredParser",
+      "name": "Structured Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [460, 480]
+    },
+    {
+      "parameters": {
+        "modelName": "gpt-4o-mini",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "OpenAIModel",
+      "name": "OpenAI GPT-4o-mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [460, 660],
+      "credentials": {
+        "openAiApi": {
+          "id": "3",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "task_check",
+              "leftValue": "={{ $json.is_task }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "IfTask",
+      "name": "IF is task",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO prioai_task (\n  title, description, source, source_ref, requester, role_hint, due_at,\n  est_minutes, value_score, risk_score, role_score, haste_score,\n  ai_score, ai_reason, status\n) VALUES (\n  '{{ $json.task_title.replace(/'/g, \"''\") }}',\n  '{{ $json.task_description.replace(/'/g, \"''\") }}',\n  'outlook_ai',\n  '{{ $('Outlook Trigger').item.json.id }}',\n  '{{ $('Outlook Trigger').item.json.from.emailAddress.address }}',\n  '',\n  {{ $json.due_date ? \"'\" + $json.due_date + \"'\" : 'NULL' }},\n  {{ $json.estimated_minutes || 'NULL' }},\n  {{ Math.round($json.priority_score * 0.30) }},\n  {{ Math.round($json.priority_score * 0.25) }},\n  {{ Math.round($json.priority_score * 0.15) }},\n  {{ Math.round($json.priority_score * 0.30) }},\n  {{ $json.priority_score }},\n  '{{ $json.priority_reasoning.replace(/'/g, \"''\") }}',\n  'incoming'\n)\nRETURNING id, title, ai_score, due_at;"
+      },
+      "id": "PgInsertAI",
+      "name": "Postgres Insert Task",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [900, 200],
+      "credentials": {
+        "postgres": {
+          "id": "2",
+          "name": "PG PrioAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.TEAMS_WEBHOOK_URL }}",
+        "authentication": "none",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"type\": \"message\",\n  \"attachments\": [\n    {\n      \"contentType\": \"application/vnd.microsoft.card.adaptive\",\n      \"content\": {\n        \"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\",\n        \"type\": \"AdaptiveCard\",\n        \"version\": \"1.5\",\n        \"body\": [\n          { \"type\": \"TextBlock\", \"size\": \"Large\", \"weight\": \"Bolder\", \"text\": \"🤖 AI-klassifisert oppgave i PrioritiAI\" },\n          { \"type\": \"TextBlock\", \"text\": \"{{ $('AI Agent Classifier').item.json.task_title }}\", \"wrap\": true },\n          { \"type\": \"FactSet\", \"facts\": [\n            { \"title\": \"AI Score:\", \"value\": \"{{ $('AI Agent Classifier').item.json.priority_score }}\" },\n            { \"title\": \"Estimert tid:\", \"value\": \"{{ $('AI Agent Classifier').item.json.estimated_minutes }} min\" },\n            { \"title\": \"Frist:\", \"value\": \"{{ $('AI Agent Classifier').item.json.due_date || '-' }}\" },\n            { \"title\": \"Kilde:\", \"value\": \"Outlook (AI Agent)\" }\n          ]},\n          { \"type\": \"TextBlock\", \"text\": \"{{ $('AI Agent Classifier').item.json.priority_reasoning }}\", \"wrap\": true, \"isSubtle\": true }\n        ],\n        \"actions\": [\n          { \"type\": \"Action.OpenUrl\", \"title\": \"Åpne i dashboard\", \"url\": \"http://localhost:3000/task/{{ $('Postgres Insert Task').item.json.id }}\" }\n        ]\n      }\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "HttpTeamsAI",
+      "name": "HTTP Teams Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 200]
+    }
+  ],
+  "connections": {
+    "Outlook Trigger": {
+      "main": [[{ "node": "AI Agent Classifier", "type": "main", "index": 0 }]]
+    },
+    "AI Agent Classifier": {
+      "main": [[{ "node": "IF is task", "type": "main", "index": 0 }]]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [[{ "node": "AI Agent Classifier", "type": "ai_outputParser", "index": 0 }]]
+    },
+    "OpenAI GPT-4o-mini": {
+      "ai_languageModel": [[{ "node": "AI Agent Classifier", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "IF is task": {
+      "main": [
+        [{ "node": "Postgres Insert Task", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Postgres Insert Task": {
+      "main": [[{ "node": "HTTP Teams Notification", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "1",
+  "meta": { "instanceId": "prioai-instance" },
+  "id": "4",
+  "tags": []
+}

@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  ai-priority-engine:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - NATS_HOST=nats
+      - NATS_PORT=4222
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JETSTREAM_ENABLED=true
+      - LOG_LEVEL=INFO
+    depends_on:
+      - nats
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v1/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  nats:
+    image: nats:latest
+    ports:
+      - "4222:4222" # Client connections
+      - "8222:8222" # HTTP monitoring
+      - "6222:6222" # Cluster routes
+    command: >
+      --jetstream --store_dir=/data --max_memory_store=256MB --max_file_store=1GB --http_port=8222
+    volumes:
+      - nats_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8222/varz", "||", "exit", "1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  nats_data:
+  redis_data:
