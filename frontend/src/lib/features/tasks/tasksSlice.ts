@@ -63,7 +63,8 @@ export const createTask = createAsyncThunk(
 
 export const updateTask = createAsyncThunk(
   'tasks/updateTask',
-  async ({ id, ...taskData }: Partial<Task> & { id: string }, { rejectWithValue }) => {
+  async (payload: { id: string } & Partial<Task>, { rejectWithValue }) => {
+    const { id, ...taskData } = payload
     try {
       const response = await fetch(`/api/tasks/${id}`, {
         method: 'PUT',

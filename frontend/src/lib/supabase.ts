@@ -158,9 +158,9 @@ export const taskOperations = {
         role_hint: taskData.role_hint || '',
         due_at: taskData.due_at,
         est_minutes: taskData.est_minutes,
-        priority_score: taskData.priority_score || 5.0,
-        urgency_level: taskData.urgency_level || 'MEDIUM',
-        reasoning: taskData.reasoning || 'Manual task creation',
+        priority_score: (taskData as any).priority_score || 5.0,
+        urgency_level: (taskData as any).urgency_level || 'MEDIUM',
+        reasoning: (taskData as any).reasoning || 'Manual task creation',
         status: 'incoming'
       })
       .select()

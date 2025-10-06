@@ -69,10 +69,12 @@ export const useTaskStore = () => {
   const updateTask = useCallback(
     async (id: Task['id'], data: Partial<Task>) => {
       const payload = mapTaskInput(data)
+      // Ensure payload doesn't include id
+      const { id: _, ...payloadWithoutId } = payload as any
       return dispatch(
         updateTaskThunk({
           id: `${id}`,
-          ...payload,
+          ...payloadWithoutId,
         })
       ).unwrap()
     },
