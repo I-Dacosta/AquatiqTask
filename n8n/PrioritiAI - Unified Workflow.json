@@ -46,17 +46,18 @@
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "prioai/tasks",
+        "path": "prioai-tasks",
         "responseMode": "onReceived",
         "responseCode": 202,
-        "responseData": "={{ { \"status\": \"accepted\", \"message\": \"Oppgave mottatt\" } }}",
+        "responseData": "={{ { \"status\": \"accepted\", \"message\": \"Oppgave mottatt for AI-behandling\" } }}",
         "options": {}
       },
       "id": "WebhookCreate",
       "name": "Webhook Create Task",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1.1,
-      "position": [240, 600]
+      "position": [240, 600],
+      "webhookId": "prioai-webhook"
     },
 
     {
@@ -82,12 +83,14 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ ($env.AI_SERVICE_URL || 'http://ai-prioritization:8000') + '/api/v1/prioritization/sync' }}",
+        "url": "http://ai-prioritization:8000/api/v1/prioritization/sync",
         "authentication": "none",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ $json }}",
-        "options": {}
+        "options": {
+          "timeout": 30000
+        }
       },
       "id": "CallPrioritiAI",
       "name": "Call PrioritiAI",
@@ -108,11 +111,11 @@
           "conditions": [
             {
               "id": "task_check",
-              "leftValue": "={{ $json.is_task }}",
-              "rightValue": "yes",
+              "leftValue": "={{ $json.urgency_level }}",
+              "rightValue": "",
               "operator": {
                 "type": "string",
-                "operation": "equals"
+                "operation": "notEmpty"
               }
             }
           ]
@@ -127,7 +130,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=INSERT INTO prioai_task (\n  title, description, source, source_ref, requester, role_hint, due_at,\n  est_minutes, value_score, risk_score, role_score, haste_score,\n  ai_score, ai_reason, status\n) VALUES (\n  '{{ $json.task_title.replace(/'/g, \"''\") }}',\n  '{{ $json.task_description.replace(/'/g, \"''\") }}',\n  '{{ $('Normalize Input Data').item.json.source }}',\n  '{{ $('Normalize Input Data').item.json.source_ref }}',\n  '{{ $('Normalize Input Data').item.json.sender }}',\n  '{{ $('Normalize Input Data').item.json.role_hint || '' }}',\n  {{ $json.due_date ? \"'\" + $json.due_date + \"'\" : 'NULL' }},\n  {{ $json.estimated_minutes || $('Normalize Input Data').item.json.est_minutes || 'NULL' }},\n  {{ Math.round($json.priority_score * 0.30) }},\n  {{ Math.round($json.priority_score * 0.25) }},\n  {{ Math.round($json.priority_score * 0.15) }},\n  {{ Math.round($json.priority_score * 0.30) }},\n  {{ $json.priority_score }},\n  '{{ $json.priority_reasoning.replace(/'/g, \"''\") }}',\n  'incoming'\n)\nRETURNING id, title, ai_score, due_at, source;"
+        "query": "=INSERT INTO tasks (\n  title, description, source, source_ref, requester, role_hint, due_at,\n  est_minutes, priority_score, urgency_level, reasoning, status, created_at\n) VALUES (\n  '{{ $json.request_id.replace(/'/g, \"''\") }}',\n  '{{ $('Normalize Input Data').item.json.content.replace(/'/g, \"''\") }}',\n  '{{ $('Normalize Input Data').item.json.source }}',\n  '{{ $('Normalize Input Data').item.json.source_ref || \"\" }}',\n  '{{ $('Normalize Input Data').item.json.sender }}',\n  '{{ $('Build PrioritiAI Payload').item.json.requester_role }}',\n  {{ $json.suggested_sla_hours ? \"NOW() + INTERVAL '\" + Math.round($json.suggested_sla_hours) + \" hours'\" : 'NULL' }},\n  {{ $json.priority_metrics.effort_complexity_score ? Math.round($json.priority_metrics.effort_complexity_score * 60) : 'NULL' }},\n  {{ $json.priority_metrics.final_priority_score }},\n  '{{ $json.urgency_level }}',\n  '{{ $json.reasoning.replace(/'/g, \"''\") }}',\n  'incoming',\n  NOW()\n)\nRETURNING id, title, priority_score, due_at, source;"
       },
       "id": "PgInsert",
       "name": "Insert Task",
@@ -149,7 +152,7 @@
         "authentication": "none",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"type\": \"message\",\n  \"attachments\": [\n    {\n      \"contentType\": \"application/vnd.microsoft.card.adaptive\",\n      \"content\": {\n        \"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\",\n        \"type\": \"AdaptiveCard\",\n        \"version\": \"1.5\",\n        \"body\": [\n          { \"type\": \"TextBlock\", \"size\": \"Large\", \"weight\": \"Bolder\", \"text\": \"🎯 AI-klassifisert oppgave\" },\n          { \"type\": \"TextBlock\", \"text\": \"{{ $('Call PrioritiAI').item.json.task_title }}\", \"wrap\": true },\n          { \"type\": \"FactSet\", \"facts\": [\n            { \"title\": \"AI Score:\", \"value\": \"{{ $('Call PrioritiAI').item.json.priority_score }}\" },\n            { \"title\": \"Estimert tid:\", \"value\": \"{{ $('Call PrioritiAI').item.json.estimated_minutes }} min\" },\n            { \"title\": \"Frist:\", \"value\": \"{{ $('Call PrioritiAI').item.json.due_date || '-' }}\" },\n            { \"title\": \"Kilde:\", \"value\": \"{{ $('Normalize Input Data').item.json.source }}\" }\n          ]},\n          { \"type\": \"TextBlock\", \"text\": \"{{ $('Call PrioritiAI').item.json.priority_reasoning }}\", \"wrap\": true, \"isSubtle\": true }\n        ],\n        \"actions\": [\n          { \"type\": \"Action.OpenUrl\", \"title\": \"Åpne i dashboard\", \"url\": \"http://localhost:3000/task/{{ $json.id }}\" }\n        ]\n      }\n    }\n  ]\n}",
+        "jsonBody": "={\n  \"type\": \"message\",\n  \"attachments\": [\n    {\n      \"contentType\": \"application/vnd.microsoft.card.adaptive\",\n      \"content\": {\n        \"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\",\n        \"type\": \"AdaptiveCard\",\n        \"version\": \"1.5\",\n        \"body\": [\n          { \"type\": \"TextBlock\", \"size\": \"Large\", \"weight\": \"Bolder\", \"text\": \"🎯 AI-klassifisert oppgave\" },\n          { \"type\": \"TextBlock\", \"text\": \"{{ $('Call PrioritiAI').item.json.request_id }}\", \"wrap\": true },\n          { \"type\": \"FactSet\", \"facts\": [\n            { \"title\": \"Prioritet:\", \"value\": \"{{ Math.round($('Call PrioritiAI').item.json.priority_metrics.final_priority_score * 10) }}/100\" },\n            { \"title\": \"Hastegrad:\", \"value\": \"{{ $('Call PrioritiAI').item.json.urgency_level }}\" },\n            { \"title\": \"Estimert SLA:\", \"value\": \"{{ Math.round($('Call PrioritiAI').item.json.suggested_sla_hours) }} timer\" },\n            { \"title\": \"Frist:\", \"value\": \"{{ $json.due_at || '-' }}\" },\n            { \"title\": \"Kilde:\", \"value\": \"{{ $('Normalize Input Data').item.json.source }}\" }\n          ]},\n          { \"type\": \"TextBlock\", \"text\": \"{{ $('Call PrioritiAI').item.json.reasoning }}\", \"wrap\": true, \"isSubtle\": true }\n        ],\n        \"actions\": [\n          { \"type\": \"Action.OpenUrl\", \"title\": \"Åpne i dashboard\", \"url\": \"http://31.97.38.31:3000/task/{{ $json.id }}\" }\n        ]\n      }\n    }\n  ]\n}",
         "options": {}
       },
       "id": "HttpNotify",
@@ -164,11 +167,11 @@
         "operation": "create",
         "planId": "={{ $env.TEAMS_PLAN_ID }}",
         "bucketId": "={{ $env.TEAMS_BUCKET_ID }}",
-        "title": "={{ $('Call PrioritiAI').item.json.task_title }}",
+        "title": "={{ $('Call PrioritiAI').item.json.request_id }}",
         "additionalFields": {
-          "notes": "={{ $('Call PrioritiAI').item.json.task_description }}\\n\\n---\\nAI Priority Score: {{ $('Call PrioritiAI').item.json.priority_score }}\\nKilde: {{ $('Normalize Input Data').item.json.source }}\\nPrioritiAI ID: {{ $json.id }}",
-          "dueDateTime": "={{ $('Call PrioritiAI').item.json.due_date ? new Date($('Call PrioritiAI').item.json.due_date).toISOString() : null }}",
-          "priority": "={{ $('Call PrioritiAI').item.json.priority_score >= 80 ? 'urgent' : $('Call PrioritiAI').item.json.priority_score >= 60 ? 'important' : $('Call PrioritiAI').item.json.priority_score >= 40 ? 'medium' : 'low' }}"
+          "notes": "={{ $('Normalize Input Data').item.json.content }}\\n\\n---\\nAI Priority Score: {{ Math.round($('Call PrioritiAI').item.json.priority_metrics.final_priority_score * 10) }}/100\\nHastegrad: {{ $('Call PrioritiAI').item.json.urgency_level }}\\nEstimert SLA: {{ Math.round($('Call PrioritiAI').item.json.suggested_sla_hours) }} timer\\nKilde: {{ $('Normalize Input Data').item.json.source }}\\nPrioritiAI ID: {{ $json.id }}\\n\\nBegrunnelse: {{ $('Call PrioritiAI').item.json.reasoning }}",
+          "dueDateTime": "={{ $('Call PrioritiAI').item.json.suggested_sla_hours ? new Date(Date.now() + $('Call PrioritiAI').item.json.suggested_sla_hours * 3600000).toISOString() : null }}",
+          "priority": "={{ $('Call PrioritiAI').item.json.urgency_level === 'CRITICAL' ? 'urgent' : $('Call PrioritiAI').item.json.urgency_level === 'HIGH' ? 'important' : $('Call PrioritiAI').item.json.urgency_level === 'MEDIUM' ? 'medium' : 'low' }}"
         }
       },
       "id": "PlannerCreateTask",
