@@ -127,6 +127,7 @@ services:
       - N8N_HOST=${VPS_IP}
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
+      - N8N_SECURE_COOKIE=false
       - WEBHOOK_URL=http://${VPS_IP}:5678/
       - NODE_ENV=production
       - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-Europe/Oslo}
