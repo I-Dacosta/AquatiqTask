@@ -56,11 +56,14 @@ jobs:
             echo "🏗️  Building AI service..."
             docker compose -f docker-compose-ip.yml build ai-prioritization
             
+            echo "🏗️  Building frontend..."
+            docker compose -f docker-compose-ip.yml build frontend
+            
             echo "🔄 Restarting services..."
             docker compose -f docker-compose-ip.yml up -d
             
             echo "⏳ Waiting for services to stabilize..."
-            sleep 15
+            sleep 20
           EOF
 
       - name: 🏥 Health checks
@@ -81,8 +84,12 @@ jobs:
             curl -f -o /dev/null -s -w "HTTP %{http_code}\n" http://localhost:5678 || exit 1
             
             echo ""
+            echo "🩺 Testing frontend health..."
+            curl -f http://localhost:3000/api/health || exit 1
+            
+            echo ""
             echo "🩺 Testing PostgreSQL..."
-            docker compose -f docker-compose-ip.yml exec -T postgres pg_isready -U prioai || exit 1
+            docker compose -f docker-compose-ip.yml exec -T postgres pg_isready -U prioai_user || exit 1
           EOF
 
       - name: ✅ Deployment complete
@@ -90,6 +97,7 @@ jobs:
           echo "🎉 Deployment successful!"
           echo ""
           echo "🌐 Services available at:"
+          echo "   Frontend:   http://31.97.38.31:3000"
           echo "   n8n:        http://31.97.38.31:5678"
           echo "   AI Service: http://31.97.38.31:8000"
           echo "   API Docs:   http://31.97.38.31:8000/docs"

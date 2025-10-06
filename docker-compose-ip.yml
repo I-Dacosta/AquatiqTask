@@ -1,0 +1,118 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: prioai-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-prioai_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-prioai_db}
+    restart: always
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./infra/db/init.sql:/docker-entrypoint-initdb.d/00_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-prioai_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: prioai-n8n
+    environment:
+      - N8N_HOST=${VPS_IP:-31.97.38.31}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - N8N_SECURE_COOKIE=false
+      - WEBHOOK_URL=http://${VPS_IP:-31.97.38.31}:5678/
+      - NODE_ENV=production
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-Europe/Oslo}
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB:-prioai_db}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER:-prioai_user}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+    restart: always
+    ports:
+      - "5678:5678"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+  ai-prioritization:
+    build:
+      context: ./AIPrioritization
+      dockerfile: Dockerfile
+    container_name: prioai-ai-service
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ENVIRONMENT=production
+      - LOG_LEVEL=info
+      - AI_TIMEOUT=300
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-prioai_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-prioai_db}
+    restart: always
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NODE_ENV=production
+    container_name: prioai-frontend
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-prioai_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-prioai_db}
+      - N8N_WEBHOOK_URL=http://${VPS_IP:-31.97.38.31}:5678/webhook/prioai-tasks
+      - AI_SERVICE_URL=http://ai-prioritization:8000
+      - NEXT_PUBLIC_API_URL=http://${VPS_IP:-31.97.38.31}:3000
+      - NEXT_PUBLIC_N8N_WEBHOOK_URL=http://${VPS_IP:-31.97.38.31}:5678/webhook/prioai-tasks
+      - NEXT_PUBLIC_AI_SERVICE_URL=http://ai-prioritization:8000
+      - NEXT_PUBLIC_FRONTEND_URL=http://${VPS_IP:-31.97.38.31}:3000
+      - AUTH_SECRET=${AUTH_SECRET}
+      - AUTH_URL=http://${VPS_IP:-31.97.38.31}:3000
+      - AUTH_MICROSOFT_ENTRA_CLIENT_ID=${AUTH_MICROSOFT_ENTRA_CLIENT_ID}
+      - AUTH_MICROSOFT_ENTRA_ID_SECRET=${AUTH_MICROSOFT_ENTRA_ID_SECRET}
+      - AUTH_MICROSOFT_ENTRA_ID_TENANT_ID=${AUTH_MICROSOFT_ENTRA_ID_TENANT_ID}
+      - NEXT_PUBLIC_AUTH_CONFIGURED=true
+      - NEXT_PUBLIC_ENABLE_N8N_INTEGRATION=true
+      - NEXT_PUBLIC_ENABLE_AI_SERVICE=true
+    restart: always
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ai-prioritization:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  pg_data:
+    driver: local
+  n8n_data:
+    driver: local

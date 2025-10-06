@@ -159,6 +159,7 @@ services:
       - AI_TIMEOUT=300
       - API_HOST=0.0.0.0
       - API_PORT=8000
+      - DATABASE_URL=postgresql://\${POSTGRES_USER:-prioai_user}:\${POSTGRES_PASSWORD}@postgres:5432/\${POSTGRES_DB:-prioai_db}
     restart: always
     ports:
       - "8000:8000"
@@ -167,6 +168,45 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NODE_ENV=production
+    container_name: prioai-frontend
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://\${POSTGRES_USER:-prioai_user}:\${POSTGRES_PASSWORD}@postgres:5432/\${POSTGRES_DB:-prioai_db}
+      - N8N_WEBHOOK_URL=http://\${VPS_IP}:5678/webhook/prioai-tasks
+      - AI_SERVICE_URL=http://ai-prioritization:8000
+      - NEXT_PUBLIC_API_URL=http://\${VPS_IP}:3000
+      - NEXT_PUBLIC_N8N_WEBHOOK_URL=http://\${VPS_IP}:5678/webhook/prioai-tasks
+      - NEXT_PUBLIC_AI_SERVICE_URL=http://ai-prioritization:8000
+      - NEXT_PUBLIC_FRONTEND_URL=http://\${VPS_IP}:3000
+      - AUTH_SECRET=\${AUTH_SECRET}
+      - AUTH_URL=http://\${VPS_IP}:3000
+      - AUTH_MICROSOFT_ENTRA_CLIENT_ID=\${AUTH_MICROSOFT_ENTRA_CLIENT_ID}
+      - AUTH_MICROSOFT_ENTRA_ID_SECRET=\${AUTH_MICROSOFT_ENTRA_ID_SECRET}
+      - AUTH_MICROSOFT_ENTRA_ID_TENANT_ID=\${AUTH_MICROSOFT_ENTRA_ID_TENANT_ID}
+      - NEXT_PUBLIC_AUTH_CONFIGURED=true
+      - NEXT_PUBLIC_ENABLE_N8N_INTEGRATION=true
+      - NEXT_PUBLIC_ENABLE_AI_SERVICE=true
+    restart: always
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ai-prioritization:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -214,6 +254,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "🌐 Access URLs (⚠️ HTTP only - no SSL):"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
+echo "   Frontend:   http://$VPS_IP:3000"
 echo "   n8n:        http://$VPS_IP:5678"
 echo "   AI Service: http://$VPS_IP:8000"
 echo "   Health:     http://$VPS_IP:8000/health"
