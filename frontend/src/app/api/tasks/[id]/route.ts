@@ -29,8 +29,12 @@ const buildUnexpectedErrorResponse = (error: unknown) => {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
 }
 
-export async function GET(_request: NextRequest, context: { params: { id: string } }) {
-    const numericId = parseNumericTaskId(context.params.id)
+export async function GET(
+    _request: NextRequest,
+    props: { params: Promise<{ id: string }> }
+) {
+    const params = await props.params
+    const numericId = parseNumericTaskId(params.id)
     if (numericId === null) {
         return invalidIdResponse
     }
@@ -46,8 +50,12 @@ export async function GET(_request: NextRequest, context: { params: { id: string
     }
 }
 
-export async function PUT(request: NextRequest, context: { params: { id: string } }) {
-    const numericId = parseNumericTaskId(context.params.id)
+export async function PUT(
+    request: NextRequest,
+    props: { params: Promise<{ id: string }> }
+) {
+    const params = await props.params
+    const numericId = parseNumericTaskId(params.id)
     if (numericId === null) {
         return invalidIdResponse
     }
@@ -87,12 +95,19 @@ export async function PUT(request: NextRequest, context: { params: { id: string 
     }
 }
 
-export async function PATCH(request: NextRequest, context: { params: { id: string } }) {
-    return PUT(request, context)
+export async function PATCH(
+    request: NextRequest,
+    props: { params: Promise<{ id: string }> }
+) {
+    return PUT(request, props)
 }
 
-export async function DELETE(_request: NextRequest, context: { params: { id: string } }) {
-    const numericId = parseNumericTaskId(context.params.id)
+export async function DELETE(
+    _request: NextRequest,
+    props: { params: Promise<{ id: string }> }
+) {
+    const params = await props.params
+    const numericId = parseNumericTaskId(params.id)
     if (numericId === null) {
         return invalidIdResponse
     }
