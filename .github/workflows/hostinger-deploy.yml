@@ -1,65 +1,101 @@
-name: Deploy to Hostinger
+name: Deploy to Hostinger VPS
 
 on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '**.md'
+      - '.github/**'
+      - 'docs/**'
   workflow_dispatch:
-    inputs:
-      branch:
-        description: "Branch to deploy"
-        required: false
-        default: main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      HOSTINGER_HOST: ${{ secrets.HOSTINGER_HOST }}
-      HOSTINGER_USER: ${{ secrets.HOSTINGER_USER }}
-      REPO_DIR: ${{ vars.HOSTINGER_REPO_DIR || '/opt/TaskPriority' }}
-      DEPLOY_BRANCH: ${{ inputs.branch || 'main' }}
-      ENV_FILE: ${{ vars.HOSTINGER_ENV_FILE || '/opt/TaskPriority/.env.production' }}
-      REPO_URL: git@github.com:${{ github.repository }}.git
+    environment: production
+    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: 🚀 Starting deployment to Hostinger VPS
+        run: |
+          echo "🌐 Deploying to: 31.97.38.31"
+          echo "📦 Branch: ${{ github.ref_name }}"
+          echo "👤 Triggered by: ${{ github.actor }}"
+          echo "💬 Commit: ${{ github.event.head_commit.message }}"
 
-      - name: Ensure deployment script is executable
-        run: chmod +x infra/deploy/hostinger_deploy.sh
-
-      - name: Start SSH agent
+      - name: 🔐 Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.HOSTINGER_SSH_KEY }}
 
-      - name: Add Hostinger host key
+      - name: 🔑 Add Hostinger to known hosts
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -H "$HOSTINGER_HOST" >> ~/.ssh/known_hosts
+          ssh-keyscan -H 31.97.38.31 >> ~/.ssh/known_hosts
 
-      - name: Upload deployment script to Hostinger
-        run: scp infra/deploy/hostinger_deploy.sh "$HOSTINGER_USER@$HOSTINGER_HOST:/tmp/hostinger_deploy.sh"
-
-      - name: Deploy stack on Hostinger
+      - name: 📥 Pull latest code on VPS
         run: |
-          ssh "$HOSTINGER_USER@$HOSTINGER_HOST" '
-            set -euo pipefail
-            chmod +x /tmp/hostinger_deploy.sh
-            REPO_URL="${{ env.REPO_URL }}" \
-            REPO_DIR="${{ env.REPO_DIR }}" \
-            DEPLOY_BRANCH="${{ env.DEPLOY_BRANCH }}" \
-            ENV_FILE="${{ env.ENV_FILE }}" \
-            /tmp/hostinger_deploy.sh
-          '
+          ssh root@31.97.38.31 << 'EOF'
+            set -e
+            echo "📂 Navigating to deployment directory..."
+            cd /opt/TaskPriority
+            
+            echo "🔄 Pulling latest changes from GitHub..."
+            git fetch origin
+            git reset --hard origin/main
+            
+            echo "✅ Code updated successfully!"
+          EOF
 
-      - name: Health check
+      - name: 🔨 Build and restart services
         run: |
-          echo "🏥 Waiting 30s for services to stabilize..."
-          sleep 30
-          
-          echo "Checking AI service health..."
-          ssh "$HOSTINGER_USER@$HOSTINGER_HOST" \
-            "docker exec taskpriority-ai-prioritization-1 curl -f http://localhost:8000/health || exit 1"
-          
-          echo "✅ Deployment successful!"
+          ssh root@31.97.38.31 << 'EOF'
+            set -e
+            cd /opt/TaskPriority
+            
+            echo "🏗️  Building AI service..."
+            docker compose -f docker-compose-ip.yml build ai-prioritization
+            
+            echo "🔄 Restarting services..."
+            docker compose -f docker-compose-ip.yml up -d
+            
+            echo "⏳ Waiting for services to stabilize..."
+            sleep 15
+          EOF
+
+      - name: 🏥 Health checks
+        run: |
+          ssh root@31.97.38.31 << 'EOF'
+            set -e
+            cd /opt/TaskPriority
+            
+            echo "🔍 Checking service status..."
+            docker compose -f docker-compose-ip.yml ps
+            
+            echo ""
+            echo "🩺 Testing AI service health..."
+            curl -f http://localhost:8000/health || exit 1
+            
+            echo ""
+            echo "🩺 Testing n8n availability..."
+            curl -f -o /dev/null -s -w "HTTP %{http_code}\n" http://localhost:5678 || exit 1
+            
+            echo ""
+            echo "🩺 Testing PostgreSQL..."
+            docker compose -f docker-compose-ip.yml exec -T postgres pg_isready -U prioai || exit 1
+          EOF
+
+      - name: ✅ Deployment complete
+        run: |
+          echo "🎉 Deployment successful!"
+          echo ""
+          echo "🌐 Services available at:"
+          echo "   n8n:        http://31.97.38.31:5678"
+          echo "   AI Service: http://31.97.38.31:8000"
+          echo "   API Docs:   http://31.97.38.31:8000/docs"
+
+      - name: ❌ Deployment failed
+        if: failure()
+        run: |
+          echo "💥 Deployment failed! Check logs:"
+          ssh root@31.97.38.31 "cd /opt/TaskPriority && docker compose -f docker-compose-ip.yml logs --tail 50"
