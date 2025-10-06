@@ -99,8 +99,6 @@ echo "✅ .env file created with generated database password"
 
 # 10. Create simplified docker-compose for IP-only deployment
 cat > docker-compose-ip.yml << 'EOFCOMPOSE'
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16
