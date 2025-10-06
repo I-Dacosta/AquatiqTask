@@ -47,9 +47,9 @@ export const taskOperations = {
     if (!supabase) throw new Error('Supabase client not initialized')
     
     let query = supabase
-      .from('prioai_task')
+      .from('tasks')
       .select('*')
-      .order('ai_score', { ascending: false })
+      .order('priority_score', { ascending: false })
 
     if (filters.status) {
       query = query.eq('status', filters.status)
@@ -60,11 +60,11 @@ export const taskOperations = {
     }
     
     if (filters.priority_min !== undefined) {
-      query = query.gte('ai_score', filters.priority_min)
+      query = query.gte('priority_score', filters.priority_min)
     }
     
     if (filters.priority_max !== undefined) {
-      query = query.lte('ai_score', filters.priority_max)
+      query = query.lte('priority_score', filters.priority_max)
     }
     
     if (filters.search) {
@@ -86,7 +86,7 @@ export const taskOperations = {
     if (!supabase) throw new Error('Supabase client not initialized')
     
     const { data, error } = await supabase
-      .from('prioai_task')
+      .from('tasks')
       .select('*')
       .eq('id', id)
       .single()
@@ -103,8 +103,8 @@ export const taskOperations = {
   async updateTaskStatus(id: number, status: Task['status']): Promise<Task | null> {
     if (!supabase) throw new Error('Supabase client not initialized')
     
-    const { data, error } = await supabase
-      .from('prioai_task')
+    const { data, error} = await supabase
+      .from('tasks')
       .update({ 
         status,
         updated_at: new Date().toISOString()
@@ -126,7 +126,7 @@ export const taskOperations = {
     if (!supabase) throw new Error('Supabase client not initialized')
     
     const { data, error } = await supabase
-      .from('prioai_task')
+      .from('tasks')
       .update({ 
         override_priority: priority,
         override_locked: locked,
@@ -149,7 +149,7 @@ export const taskOperations = {
     if (!supabase) throw new Error('Supabase client not initialized')
     
     const { data, error } = await supabase
-      .from('prioai_task')
+      .from('tasks')
       .insert({
         title: taskData.title || 'Untitled Task',
         description: taskData.description || '',
@@ -158,13 +158,10 @@ export const taskOperations = {
         role_hint: taskData.role_hint || '',
         due_at: taskData.due_at,
         est_minutes: taskData.est_minutes,
-        value_score: taskData.value_score || 50,
-        risk_score: taskData.risk_score || 50,
-        role_score: taskData.role_score || 50,
-        haste_score: taskData.haste_score || 50,
-        ai_score: taskData.ai_score || 50,
-        ai_reason: taskData.ai_reason || 'Manual task creation',
-  status: 'inbox'
+        priority_score: taskData.priority_score || 5.0,
+        urgency_level: taskData.urgency_level || 'MEDIUM',
+        reasoning: taskData.reasoning || 'Manual task creation',
+        status: 'incoming'
       })
       .select()
       .single()
@@ -182,8 +179,8 @@ export const taskOperations = {
     if (!supabase) throw new Error('Supabase client not initialized')
     
     const { data, error } = await supabase
-      .from('prioai_task')
-      .select('status, ai_score, source')
+      .from('tasks')
+      .select('status, priority_score, source')
 
     if (error) {
       console.error('Error fetching task stats:', error)
@@ -192,17 +189,16 @@ export const taskOperations = {
 
     const stats = {
       total: data?.length || 0,
-  inbox: data?.filter(t => t.status === 'inbox').length || 0,
-  todo: data?.filter(t => t.status === 'todo').length || 0,
-  approved: data?.filter(t => t.status === 'approved').length || 0,
+      incoming: data?.filter(t => t.status === 'incoming').length || 0,
+      todo: data?.filter(t => t.status === 'todo').length || 0,
+      approved: data?.filter(t => t.status === 'approved').length || 0,
       in_progress: data?.filter(t => t.status === 'in_progress').length || 0,
       done: data?.filter(t => t.status === 'done').length || 0,
-      high_priority: data?.filter(t => t.ai_score >= 80).length || 0,
+      high_priority: data?.filter(t => (t.priority_score || 0) >= 8.0).length || 0,
       by_source: {
         outlook: data?.filter(t => t.source === 'outlook').length || 0,
         teams: data?.filter(t => t.source === 'teams').length || 0,
         manual: data?.filter(t => t.source === 'manual').length || 0,
-        planner: data?.filter(t => t.source === 'planner').length || 0,
       }
     }
 

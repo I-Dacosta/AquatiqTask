@@ -107,6 +107,49 @@ services:
       retries: 3
       start_period: 40s
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NODE_ENV=production
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.frontend.rule=Host(`tasks.${DOMAIN_NAME}`)
+      - traefik.http.routers.frontend.tls=true
+      - traefik.http.routers.frontend.entrypoints=web,websecure
+      - traefik.http.routers.frontend.tls.certresolver=mytlschallenge
+      - traefik.http.services.frontend.loadbalancer.server.port=3000
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-prioai}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-prioai_db}
+      - N8N_WEBHOOK_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/webhook/prioai-tasks
+      - AI_SERVICE_URL=http://ai-prioritization:8000
+      - NEXT_PUBLIC_API_URL=https://tasks.${DOMAIN_NAME}
+      - NEXT_PUBLIC_N8N_WEBHOOK_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/webhook/prioai-tasks
+      - NEXT_PUBLIC_AI_SERVICE_URL=http://ai-prioritization:8000
+      - NEXT_PUBLIC_FRONTEND_URL=https://tasks.${DOMAIN_NAME}
+      - AUTH_SECRET=${AUTH_SECRET}
+      - AUTH_URL=https://tasks.${DOMAIN_NAME}
+      - AUTH_MICROSOFT_ENTRA_CLIENT_ID=${AUTH_MICROSOFT_ENTRA_CLIENT_ID}
+      - AUTH_MICROSOFT_ENTRA_ID_SECRET=${AUTH_MICROSOFT_ENTRA_ID_SECRET}
+      - AUTH_MICROSOFT_ENTRA_ID_TENANT_ID=${AUTH_MICROSOFT_ENTRA_ID_TENANT_ID}
+      - NEXT_PUBLIC_AUTH_CONFIGURED=true
+      - NEXT_PUBLIC_ENABLE_N8N_INTEGRATION=true
+      - NEXT_PUBLIC_ENABLE_AI_SERVICE=true
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ai-prioritization:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
 volumes:
   traefik_data:
     external: true
